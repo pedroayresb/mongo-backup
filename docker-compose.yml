@@ -1,0 +1,11 @@
+version: '3.9'
+
+services:
+  core:
+    image: node:20-alpine3.19
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: dockerfile
+    volumes:
+      - ./backup:/app/backup

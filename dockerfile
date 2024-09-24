@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY . .
 
+RUN apk add --no-cache samba-client
+
 RUN npm install
 
 RUN npm run build

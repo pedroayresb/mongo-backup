@@ -3,6 +3,8 @@ import db from "./database";
 import fs from "fs";
 import path from "path";
 import { CronJob } from "cron";
+import createFolder from "./sambaClient";
+import backupDB from "./database/backupDB";
 
 if (!fs.existsSync("./backup")) {
   fs.mkdirSync("./backup");
@@ -11,6 +13,12 @@ if (!fs.existsSync("./backup")) {
 async function backupCollection(collectionName: string, backupPath: string) {
   const collection = db.collection(collectionName);
   const items = await collection.find().toArray();
+
+  await backupDB.collection(collectionName).deleteMany({});
+  if (items.length > 0) {
+    await backupDB.collection(collectionName).insertMany(items);
+  }
+
   const itemsStringified = items.map((item) => stringifyMongo(item));
   const itemsString = JSON.stringify(itemsStringified, null, 2);
   if (!fs.existsSync(path.join("./backup", backupPath))) {
@@ -33,8 +41,12 @@ class MongoManager {
 
     for (const collection of collections) {
       await backupCollection(collection.name, formattedDate);
+
       console.log(`Backup for collection ${collection.name} completed`);
     }
+    await createFolder(formattedDate);
+
+    fs.rmdirSync(path.join("./backup", formattedDate), { recursive: true });
 
     console.log(`Backup completed at ${date}`);
   }

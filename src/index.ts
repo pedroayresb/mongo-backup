@@ -55,10 +55,10 @@ class MongoManager {
       stringifyMongo,
       2
     );
-    if (!fs.existsSync(path.join("./backup", backupPath))) {
-      fs.mkdirSync(path.join("./backup", backupPath));
+    if (!fs.existsSync(path.join(this.folderName, backupPath))) {
+      fs.mkdirSync(path.join(this.folderName, backupPath));
     }
-    fs.writeFileSync(path.join("./backup", backupPath, `${dayjs().format(this.folderFormat)}-${collectionName}.json`), itemsString);
+    fs.writeFileSync(path.join(this.folderName, backupPath, `${dayjs().format(this.folderFormat)}-${collectionName}.json`), itemsString);
   }
 
   private async backup() {

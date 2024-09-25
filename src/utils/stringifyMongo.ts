@@ -1,7 +1,8 @@
 import { ObjectId } from "mongodb";
 
 function stringifyMongo(
-  item: ObjectId | Date | { $oid: string } | { $date: string } | { [key: string]: any } | any[] | any
+  _: string,
+  item:  ObjectId | Date | { $oid: string } | { $date: string } | { [key: string]: any } | any[] | any
 ) {
   if (item instanceof ObjectId) {
     item = { $oid: item.toString() };
@@ -13,13 +14,13 @@ function stringifyMongo(
 
   if (item && typeof item === "object") {
     Object.keys(item).forEach((key) => {
-      item[key] = stringifyMongo(item[key]);
+      item[key] = stringifyMongo(_, item[key]);
     });
   }
 
   if (Array.isArray(item)) {
     item.forEach((element, index) => {
-      item[index] = stringifyMongo(element);
+      item[index] = stringifyMongo(_, element);
     });
   }
 

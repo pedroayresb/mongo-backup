@@ -2,67 +2,113 @@ import stringifyMongo from "./utils/stringifyMongo";
 import db from "./database";
 import fs from "fs";
 import path from "path";
-import { CronJob } from "cron";
+import { CronJob, CronTime } from "cron";
 import createFolder from "./sambaClient";
 import backupDB from "./database/backupDB";
+import dayjs from "dayjs";
+import generateLogBars from "./utils/generateLogBars";
 
-if (!fs.existsSync("./backup")) {
-  fs.mkdirSync("./backup");
-}
+const cronTime = process.env.CRON_TIME || `0 0 12,18 * * *`;
+const logFormat = process.env.LOG_FORMAT || "DD/MM/YYYY HH:mm:s";
+const folderFormat = process.env.FOLDER_FORMAT || "DD-MM-YYYY_HH-mm";
+const folderName = process.env.FOLDER_NAME || "backup";
 
-async function backupCollection(collectionName: string, backupPath: string) {
-  const collection = db.collection(collectionName);
-  const items = await collection.find().toArray();
-
-  await backupDB.collection(collectionName).deleteMany({});
-  if (items.length > 0) {
-    await backupDB.collection(collectionName).insertMany(items);
-  }
-
-  const itemsStringified = items.map((item) => stringifyMongo(item));
-  const itemsString = JSON.stringify(itemsStringified, null, 2);
-  if (!fs.existsSync(path.join("./backup", backupPath))) {
-    fs.mkdirSync(path.join("./backup", backupPath));
-  }
-  fs.writeFileSync(path.join("./backup", backupPath, `${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").split(".")[0]}-${collectionName}.json`), itemsString);
+if (!fs.existsSync(folderName)) {
+  fs.mkdirSync(folderName);
 }
 
 class MongoManager {
-  constructor() {
-    this.backup = this.backup.bind(this);
+  cronTime: string;
+  logFormat: string;
+  folderFormat: string;
+  folderName: string;
+
+  constructor({
+    cronTime,
+    logFormat,
+    folderFormat,
+    folderName,
+  }: {
+    cronTime: string;
+    logFormat: string;
+    folderFormat: string;
+    folderName: string;
+  }) {
+    this.cronTime = cronTime;
+    this.logFormat = logFormat;
+    this.folderFormat = folderFormat;
+    this.folderName = folderName;
+
+    this.routine = this.routine.bind(this);
   }
 
-  async backup() {
+  private async backupCollection(collectionName: string, backupPath: string) {
+    const collection = db.collection(collectionName);
+    const items = await collection.find().toArray();
+
+    await backupDB.collection(collectionName).deleteMany({});
+    if (items.length > 0) {
+      await backupDB.collection(collectionName).insertMany(items);
+    }
+    const itemsString = JSON.stringify(
+      items,
+      stringifyMongo,
+      2
+    );
+    if (!fs.existsSync(path.join("./backup", backupPath))) {
+      fs.mkdirSync(path.join("./backup", backupPath));
+    }
+    fs.writeFileSync(path.join("./backup", backupPath, `${dayjs().format(this.folderFormat)}-${collectionName}.json`), itemsString);
+  }
+
+  private async backup() {
     const collections = await db.listCollections().toArray();
 
-    const date = new Date().toISOString();
-    // format date to MMddYYYY-HH-mm
-    const formattedDate = date.replace(/[-:]/g, "").replace("T", "-").split(".")[0];
+    const date = dayjs()
 
-    for (const collection of collections) {
-      await backupCollection(collection.name, formattedDate);
+    const formattedDate = date.format(this.folderFormat);
 
-      console.log(`Backup for collection ${collection.name} completed`);
-    }
-    await createFolder(formattedDate);
+    let progress = 1;
+    const total = collections.length;
 
-    fs.rmdirSync(path.join("./backup", formattedDate), { recursive: true });
+    await Promise.all(
+      collections.map(async (collection) => {
+        await this.backupCollection(collection.name, formattedDate);
 
-    console.log(`Backup completed at ${date}`);
+        console.log(`|${generateLogBars(progress, total)}| ${((progress / total) * 100).toFixed(2)}% (${progress}/${total}) ${collection.name} completed.\n`);
+
+        progress += 1;
+
+        return true;
+      })
+    );
+    await createFolder(this.folderName, formattedDate);
+
+    fs.rmSync(path.join(this.folderName, formattedDate), { recursive: true });
+
+    const nextDate = dayjs(new CronTime(this.cronTime).getNextDateFrom(new Date()).toJSDate()).format(this.logFormat);
+
+    console.log(`Backup completed at ${date.format(this.logFormat)}. Next backup at ${nextDate}.\n`);
   }
 
-  async routine(hour: number) {
-    const job = new CronJob(`0 0 ${hour} * * *`, async () => {
-      await this.backup();
-    });
+  async routine() {
+    const job = new CronJob(
+      this.cronTime,
+      async () => {
+        await this.backup();
+      },
+    );
 
     job.start();
   }
 }
 
-const mongoManager = new MongoManager();
+const mongoManager = new MongoManager({
+  cronTime,
+  logFormat,
+  folderFormat,
+  folderName,
+})
 
 
-mongoManager.routine(12);
-
-mongoManager.routine(18);
+mongoManager.routine();

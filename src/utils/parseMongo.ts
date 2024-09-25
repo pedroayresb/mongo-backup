@@ -1,11 +1,8 @@
 import { ObjectId } from "mongodb";
 
-function parseMongo(item:
-  { $oid: string } |
-  { $date: string } |
-  { [key: string]: any } |
-  any[] |
-  any
+function parseMongo(
+  _: string,
+  item:  ObjectId | Date | { $oid: string } | { $date: string } | { [key: string]: any } | any[] | any
 ) {
   if (item && item.hasOwnProperty("$oid")) {
     return new ObjectId(item.$oid);
@@ -17,13 +14,13 @@ function parseMongo(item:
 
   if (item && typeof item === "object") {
     Object.keys(item).forEach((key) => {
-      item[key] = parseMongo(item[key]);
+      item[key] = parseMongo(_, item[key]);
     });
   }
 
   if (Array.isArray(item)) {
     item.forEach((element, index) => {
-      item[index] = parseMongo(element);
+      item[index] = parseMongo(_, element);
     });
   }
 

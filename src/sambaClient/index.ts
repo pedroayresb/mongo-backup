@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import SambaClient from "samba-client";
 
-
 const address = process.env.SAMBA_ADDRESS || "";
 const username = process.env.SAMBA_USERNAME || "";
 const password = process.env.SAMBA_PASSWORD || "";
@@ -14,15 +13,17 @@ const client = new SambaClient({
 });
 
 async function createFolder(
+  backupPath: string,
   folderName: string,
 ) {
-  await client.mkdir(`backup/${folderName}`, path.join(`./backup/${folderName}`));
-  // moves all files from the folder to the new folder
-  const files = fs.readdirSync(`./backup/${folderName}`);
+  await client.mkdir(`${backupPath}/${folderName}`, path.join(`./${backupPath}/${folderName}`));
+
+  const files = fs.readdirSync(`./${backupPath}/${folderName}`);
+
   for (const file of files) {
     await client.sendFile(
-      path.join(`./backup/${folderName}`, file),
-      `backup/${folderName}/${file}`
+      path.join(`./${backupPath}/${folderName}`, file),
+      `${backupPath}/${folderName}/${file}`
     );
   }
 }

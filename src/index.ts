@@ -1,12 +1,10 @@
-import stringifyMongo from "./utils/stringifyMongo";
 import db from "./database";
 import fs from "fs";
 import path from "path";
 import { CronJob, CronTime } from "cron";
 import createFolder from "./sambaClient";
-import backupDB from "./database/backupDB";
 import dayjs from "dayjs";
-import generateLogBars from "./utils/generateLogBars";
+import { fork } from "child_process";
 
 const cronTime = process.env.CRON_TIME || `0 0 12,18 * * *`;
 const logFormat = process.env.LOG_FORMAT || "DD/MM/YYYY HH:mm:s";
@@ -22,6 +20,9 @@ class MongoManager {
   logFormat: string;
   folderFormat: string;
   folderName: string;
+  total?: number;
+
+  private progress: number;
 
   constructor({
     cronTime,
@@ -39,67 +40,71 @@ class MongoManager {
     this.folderFormat = folderFormat;
     this.folderName = folderName;
 
+    this.progress = 1;
+
     this.routine = this.routine.bind(this);
-  }
-
-  private async backupCollection(collectionName: string, backupPath: string) {
-    const collection = db.collection(collectionName);
-    const items = await collection.find().toArray();
-
-    await backupDB.collection(collectionName).deleteMany({});
-    if (items.length > 0) {
-      await backupDB.collection(collectionName).insertMany(items);
-    }
-    const itemsString = JSON.stringify(
-      items,
-      stringifyMongo,
-      2
-    );
-    if (!fs.existsSync(path.join(this.folderName, backupPath))) {
-      fs.mkdirSync(path.join(this.folderName, backupPath));
-    }
-    fs.writeFileSync(path.join(this.folderName, backupPath, `${dayjs().format(this.folderFormat)}-${collectionName}.json`), itemsString);
   }
 
   private async backup() {
     const collections = await db.listCollections().toArray();
 
-    const date = dayjs()
+    const date = dayjs();
 
     const formattedDate = date.format(this.folderFormat);
 
-    let progress = 1;
-    const total = collections.length;
+    this.total = collections.length;
 
     await Promise.all(
-      collections.map(async (collection) => {
-        await this.backupCollection(collection.name, formattedDate);
+      collections.map((collection) => {
+        new Promise((resolve) => {
+          const forked = fork(path.join(__dirname, "model"));
 
-        console.log(`|${generateLogBars(progress, total)}| ${((progress / total) * 100).toFixed(2)}% (${progress}/${total}) ${collection.name} completed.\n`);
+          forked.send({
+            collectionName: collection.name,
+            backupPath: formattedDate,
+            folderName: this.folderName,
+            folderFormat: this.folderFormat,
+            progress: this.progress,
+            total: this.total,
+          });
 
-        progress += 1;
-
-        return true;
-      })
+          forked.on("exit", () => {
+            this.progress += 1;
+            resolve(true);
+          });
+        });
+      }),
     );
     await createFolder(this.folderName, formattedDate);
 
     fs.rmSync(path.join(this.folderName, formattedDate), { recursive: true });
 
-    const nextDate = dayjs(new CronTime(this.cronTime).getNextDateFrom(new Date()).toJSDate()).format(this.logFormat);
+    const nextDate = dayjs(
+      new CronTime(this.cronTime).getNextDateFrom(new Date()).toJSDate(),
+    ).format(this.logFormat);
 
-    console.log(`Backup completed at ${date.format(this.logFormat)}. Next backup at ${nextDate}.\n`);
+    console.log(
+      `Backup completed at ${date.format(this.logFormat)}. Next backup at ${nextDate}.\n`,
+    );
   }
 
   async routine() {
-    const job = new CronJob(
+    new CronJob(
       this.cronTime,
       async () => {
+        console.log(`Backup started at ${dayjs().format(this.logFormat)}.\n`);
         await this.backup();
       },
+      null,
+      true,
     );
 
-    job.start();
+    console.log(
+      `Backup routine started at ${dayjs().format(this.logFormat)}.\n`,
+    );
+    console.log(
+      `Next backup at ${dayjs(new CronTime(this.cronTime).getNextDateFrom(new Date()).toJSDate()).format(this.logFormat)}.\n`,
+    );
   }
 }
 
@@ -108,7 +113,6 @@ const mongoManager = new MongoManager({
   logFormat,
   folderFormat,
   folderName,
-})
-
+});
 
 mongoManager.routine();

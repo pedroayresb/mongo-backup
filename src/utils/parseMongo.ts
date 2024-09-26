@@ -1,17 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable no-prototype-builtins */
 import { ObjectId } from "mongodb";
 
 function parseMongo(
   _: string,
-  item:
-    | ObjectId
-    | Date
-    | { $oid: string }
-    | { $date: string }
-    | { [key: string]: any }
-    | any[]
-    | any,
+  item:  ObjectId | Date | { $oid: string } | { $date: string } | { [key: string]: any } | any[] | any
 ) {
   if (item && item.hasOwnProperty("$oid")) {
     return new ObjectId(item.$oid);

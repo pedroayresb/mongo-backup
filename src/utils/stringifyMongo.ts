@@ -1,16 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ObjectId } from "mongodb";
 
 function stringifyMongo(
   _: string,
-  item:
-    | ObjectId
-    | Date
-    | { $oid: string }
-    | { $date: string }
-    | { [key: string]: any }
-    | any[]
-    | any,
+  item:  ObjectId | Date | { $oid: string } | { $date: string } | { [key: string]: any } | any[] | any
 ) {
   if (item instanceof ObjectId) {
     item = { $oid: item.toString() };

@@ -12,18 +12,18 @@ const client = new SambaClient({
   password,
 });
 
-async function createFolder(backupPath: string, folderName: string) {
-  await client.mkdir(
-    `${backupPath}/${folderName}`,
-    path.join(`./${backupPath}/${folderName}`),
-  );
+async function createFolder(
+  backupPath: string,
+  folderName: string,
+) {
+  await client.mkdir(`${backupPath}/${folderName}`, path.join(`./${backupPath}/${folderName}`));
 
   const files = fs.readdirSync(`./${backupPath}/${folderName}`);
 
   for (const file of files) {
     await client.sendFile(
       path.join(`./${backupPath}/${folderName}`, file),
-      `${backupPath}/${folderName}/${file}`,
+      `${backupPath}/${folderName}/${file}`
     );
   }
 }

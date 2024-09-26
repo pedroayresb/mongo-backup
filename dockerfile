@@ -6,6 +6,8 @@ COPY . .
 
 RUN apk add --no-cache samba-client
 
+RUN apk add mongodb-tools
+
 RUN npm install
 
 RUN npm run build

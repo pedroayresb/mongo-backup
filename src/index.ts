@@ -1,16 +1,17 @@
-import stringifyMongo from "./utils/stringifyMongo";
-import db from "./database";
 import fs from "fs";
 import path from "path";
-import { CronJob, CronTime } from "cron";
 import createFolder from "./sambaClient";
-import backupDB from "./database/backupDB";
 import dayjs from "dayjs";
-import generateLogBars from "./utils/generateLogBars";
-import { execSync } from "child_process";
+import { exec } from "child_process";
+import dotenv from "dotenv";
 
-const cronTime = process.env.CRON_TIME || `0 0 12,18 * * *`;
-const logFormat = process.env.LOG_FORMAT || "DD/MM/YYYY HH:mm:s";
+const dirname = path.resolve(path.dirname(""));
+
+dotenv.config({ path: path.join(dirname, ".env") });
+
+// const cronTime = process.env.CRON_TIME || `0 0 12,18 * * *`;
+const cronTime = "*/30 * * * * *";
+const logFormat = process.env.LOG_FORMAT || "DD/MM/YYYY HH:mm:ss";
 const folderFormat = process.env.FOLDER_FORMAT || "DD-MM-YYYY_HH-mm";
 const folderName = process.env.FOLDER_NAME || "backup";
 const MONGO_DB_NAME = process.env.MONGO_DB_NAME || "";
@@ -19,6 +20,27 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017";
 if (!fs.existsSync(folderName)) {
   fs.mkdirSync(folderName);
 }
+
+const executeCommand = (command: string) => {
+  return new Promise((resolve, reject) => {
+    const childProcess = exec(command, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
+    });
+
+    // Log the output in real-time
+    childProcess.stdout!.on("data", (data) => {
+      console.log(`stdout: ${data}`);
+    });
+
+    childProcess.stderr!.on("data", (data) => {
+      console.error(`stderr: ${data}`);
+    });
+  });
+};
 
 class MongoManager {
   cronTime: string;
@@ -45,41 +67,30 @@ class MongoManager {
     this.routine = this.routine.bind(this);
   }
 
-  private async backupCollection(collectionName: string, backupPath: string) {
-    const collection = db.collection(collectionName);
-    const items = await collection.find().toArray();
-
-    await backupDB.collection(collectionName).deleteMany({});
-    if (items.length > 0) {
-      await backupDB.collection(collectionName).insertMany(items);
-    }
-    const itemsString = JSON.stringify(items, stringifyMongo, 2);
-    if (!fs.existsSync(path.join(this.folderName, backupPath))) {
-      fs.mkdirSync(path.join(this.folderName, backupPath));
-    }
-    fs.writeFileSync(
-      path.join(
-        this.folderName,
-        backupPath,
-        `${dayjs().format(this.folderFormat)}-${collectionName}.json`,
-      ),
-      itemsString,
-    );
-  }
-
   private async backup() {
     const date = dayjs().format(this.folderFormat);
-    execSync(
-      `mongodump --uri ${MONGO_URI} --db ${MONGO_DB_NAME} --out ${this.folderName}/${date}`,
+    console.log("Starting backup at: ", date);
+    console.log(MONGO_URI, MONGO_DB_NAME);
+    await executeCommand(
+      `mongodump --uri='${MONGO_URI}' --db=${MONGO_DB_NAME} --out=./${this.folderName}/${date}`,
     );
+
+    await createFolder(this.folderName, date);
   }
 
   async routine() {
-    const job = new CronJob(this.cronTime, async () => {
-      await this.backup();
-    });
+    // const job = new CronJob(this.cronTime, async () => {
+    // });
 
-    job.start();
+    await this.backup();
+
+    // console.log(
+    //   `Routine Started: ${dayjs().format(this.logFormat)} - Next Backup: ${dayjs(
+    //     job.nextDate().toJSDate(),
+    //   ).format(this.logFormat)}`,
+    // );
+
+    // job.start();
   }
 }
 
